@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Análise SCFF</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: Arial, sans-serif;
+            background: #667eea;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .header { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        .header h1 { color: #333; margin-bottom: 5px; }
+        .header p { color: #666; }
+        .form-card { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: bold; color: #333; }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        @media (max-width: 768px) { .form-row { grid-template-columns: 1fr; } }
+        button {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        .btn-submit {
+            background: #667eea;
+            color: white;
+            width: 100%;
+        }
+        .btn-submit:hover { background: #5568d3; }
+        .btn-back {
+            background: #f5f5f5;
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .error { background: #fee; color: #c33; padding: 15px; border-radius: 4px; margin: 10px 0; border-left: 4px solid #f44; }
+        .success { background: #efe; color: #3a3; padding: 15px; border-radius: 4px; margin: 10px 0; }
+        .hidden { display: none !important; }
+        .dashboard { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        .dashboard h2 { color: #333; margin-bottom: 15px; border-bottom: 2px solid #667eea; padding-bottom: 10px; }
+        .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px; }
+        @media (max-width: 768px) { .stats { grid-template-columns: 1fr; } }
+        .stat-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 6px;
+            text-align: center;
+        }
+        .stat-number { font-size: 32px; font-weight: bold; }
+        .stat-label { font-size: 14px; margin-top: 5px; }
+        .stat-percent { font-size: 20px; margin-top: 10px; font-weight: bold; }
+        table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+        th { background: #667eea; color: white; padding: 12px; text-align: left; }
+        td { padding: 10px; border-bottom: 1px solid #eee; }
+        tr:hover { background: #f9f9f9; }
+        .charts-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        @media (max-width: 1024px) {
+            .charts-container {
+                grid-template-columns: 1fr;
+            }
+        }
+        .chart-box {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            position: relative;
+            height: 450px;
+        }
+        .chart-box h3 { color: #333; margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Análise de Atendimentos SCFF</h1>
+            <p>Processar planilha Excel e gerar relatórios</p>
+        </div>
+
+        <!-- FORMULÁRIO -->
+        <div id="formSection" class="form-card">
+            <form id="uploadForm">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>📁 Arquivo Excel (.xlsx)</label>
+                        <input type="file" id="fileInput" accept=".xlsx" required>
+                    </div>
+                    <div class="form-group">
+                        <label>📅 Mês de Referência</label>
+                        <input type="text" id="monthInput" placeholder="Ex: Outubro" required>
+                    </div>
+                </div>
+                <button type="submit" class="btn-submit">Processar Dados</button>
+            </form>
+            <div id="formMessage"></div>
+        </div>
+
+        <!-- DASHBOARD -->
+        <div id="dashboardSection" class="hidden">
+            <button class="btn-back" onclick="voltarFormulario()">← Voltar</button>
+            <div id="dashboardContent"></div>
+        </div>
+    </div>
+
+    <script>
+        // Carregar XLSX
+        const xlsxUrls = [
+            'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
+            'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
+            'https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js'
+        ];
+
+        function carregarXLSX(urls, indice = 0) {
+            if (indice >= urls.length) {
+                console.error('❌ Falha ao carregar XLSX');
+                return;
+            }
+            const script = document.createElement('script');
+            script.src = urls[indice];
+            script.onload = () => console.log('✅ XLSX carregado:', urls[indice]);
+            script.onerror = () => {
+                console.warn('⚠️ Falha:', urls[indice]);
+                carregarXLSX(urls, indice + 1);
+            };
+            document.head.appendChild(script);
+        }
+        carregarXLSX(xlsxUrls);
+
+        const uploadForm = document.getElementById('uploadForm');
+        const fileInput = document.getElementById('fileInput');
+        const monthInput = document.getElementById('monthInput');
+        const formSection = document.getElementById('formSection');
+        const dashboardSection = document.getElementById('dashboardSection');
+        const dashboardContent = document.getElementById('dashboardContent');
+        const formMessage = document.getElementById('formMessage');
+
+        uploadForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            formMessage.innerHTML = '';
+
+            const file = fileInput.files[0];
+            const month = monthInput.value.trim();
+
+            if (!file || !month) {
+                formMessage.innerHTML = '<div class="error">⚠️ Preencha todos os campos!</div>';
+                return;
+            }
+
+            let tentativas = 0;
+            while (typeof XLSX === 'undefined' && tentativas < 30) {
+                formMessage.innerHTML = `<div class="success">⏳ Carregando... ${tentativas}s</div>`;
+                await new Promise(resolve => setTimeout(resolve, 500));
+                tentativas++;
+            }
+
+            if (typeof XLSX === 'undefined') {
+                formMessage.innerHTML = '<div class="error">❌ Erro ao carregar XLSX</div>';
+                return;
+            }
+
+            try {
+                formMessage.innerHTML = '<div class="success">⏳ Processando...</div>';
+                const arrayBuffer = await file.arrayBuffer();
+                const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+                const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+                const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+                if (jsonData.length === 0) throw new Error('Arquivo vazio');
+                
+                const stats = processarDados(jsonData, month);
+                formSection.classList.add('hidden');
+                dashboardSection.classList.remove('hidden');
+                mostrarDashboard(stats);
+                formMessage.innerHTML = '';
+
+            } catch (error) {
+                formMessage.innerHTML = `<div class="error">❌ ${error.message}</div>`;
+                console.error('Erro:', error);
+            }
+        });
+
+        function normalize(text) {
+            if (!text) return 'NÃO';
+            const str = String(text).trim().toUpperCase();
+            if (['SIM', 'YES', 'TRUE', '1', 'Y', 'X', '✓', 'V'].includes(str)) {
+                return 'SIM';
+            }
+            return 'NÃO';
+        }
+
+        function processarDados(jsonData, month) {
+            const stats = {
+                month: month,
+                total: 0,
+                n1: 0,
+                n2: 0,
+                conjunto: 0,
+                byGroup: {},
+                errors: []
+            };
+
+            jsonData.forEach((row, idx) => {
+                try {
+                    let n1Raw = row['Resolvido N1'] || row['resolvido N1'] || row['N1'] || '';
+                    let n2Raw = row['Resolvido N2'] || row['resolvido N2'] || row['N2'] || '';
+                    let grupo = String(row['Grupo'] || 'Sem Grupo').trim();
+
+                    const n1 = normalize(n1Raw);
+                    const n2 = normalize(n2Raw);
+
+                    let tipo = null;
+                    if (n1 === 'SIM' && n2 === 'SIM') {
+                        tipo = 'conjunto';
+                    } else if (n1 === 'SIM') {
+                        tipo = 'n1';
+                    } else if (n2 === 'SIM') {
+                        tipo = 'n2';
+                    }
+
+                    if (tipo) {
+                        stats.total++;
+                        stats[tipo]++;
+
+                        if (!stats.byGroup[grupo]) {
+                            stats.byGroup[grupo] = { n1: 0, n2: 0, conjunto: 0 };
+                        }
+                        stats.byGroup[grupo][tipo]++;
+                    }
+                } catch (e) {
+                    stats.errors.push({ line: idx + 1, msg: e.message });
+                }
+            });
+
+            console.log('Stats finais:', stats);
+            return stats;
+        }
+
+        function mostrarDashboard(stats) {
+            const n1Perc = stats.total > 0 ? ((stats.n1 / stats.total) * 100).toFixed(1) : 0;
+            const n2Perc = stats.total > 0 ? ((stats.n2 / stats.total) * 100).toFixed(1) : 0;
+            const conjuntoPerc = stats.total > 0 ? ((stats.conjunto / stats.total) * 100).toFixed(1) : 0;
+
+            let html = `
+                <div class="dashboard">
+                    <h2>📈 Total de Atendimentos - ${stats.month}</h2>
+                    <div class="stats">
+                        <div class="stat-box">
+                            <div class="stat-number">${stats.n1}</div>
+                            <div class="stat-label">N1</div>
+                            <div class="stat-percent">${n1Perc}%</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-number">${stats.n2}</div>
+                            <div class="stat-label">N2</div>
+                            <div class="stat-percent">${n2Perc}%</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-number">${stats.conjunto}</div>
+                            <div class="stat-label">N1+N2</div>
+                            <div class="stat-percent">${conjuntoPerc}%</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="charts-container">
+                    <div class="chart-box">
+                        <h3>📊 Distribuição Global</h3>
+                        <canvas id="chartGlobal"></canvas>
+                    </div>
+                    <div class="chart-box">
+                        <h3>📊 Por Grupo de Atendimento</h3>
+                        <canvas id="chartGrupos"></canvas>
+                    </div>
+                </div>
+
+                <div class="dashboard">
+                    <h2>📋 Detalhamento por Grupo</h2>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Grupo</th>
+                                <th style="text-align: center;">N1</th>
+                                <th style="text-align: center;">N2</th>
+                                <th style="text-align: center;">N1+N2</th>
+                                <th style="text-align: center;">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            Object.entries(stats.byGroup).forEach(([grupo, dados]) => {
+                const total = dados.n1 + dados.n2 + dados.conjunto;
+                html += `
+                    <tr>
+                        <td><strong>${grupo}</strong></td>
+                        <td style="text-align: center;">${dados.n1}</td>
+                        <td style="text-align: center;">${dados.n2}</td>
+                        <td style="text-align: center;">${dados.conjunto}</td>
+                        <td style="text-align: center;"><strong>${total}</strong></td>
+                    </tr>
+                `;
+            });
+
+            html += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+
+            if (stats.errors.length > 0) {
+                html += `<div class="error"><strong>⚠️ ${stats.errors.length} aviso(s)</strong></div>`;
+            }
+
+            dashboardContent.innerHTML = html;
+            
+            setTimeout(() => {
+                criarGraficoGlobal(stats);
+                criarGraficoGrupos(stats);
+            }, 100);
+        }
+
+        function criarGraficoGlobal(stats) {
+            const canvas = document.getElementById('chartGlobal');
+            if (!canvas) return;
+
+            new Chart(canvas, {
+                type: 'doughnut',
+                data: {
+                    labels: ['N1', 'N2', 'N1+N2'],
+                    datasets: [{
+                        data: [stats.n1, stats.n2, stats.conjunto],
+                        backgroundColor: ['#667eea', '#ff9f43', '#2ed573'],
+                        borderColor: '#fff',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom' },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percent = ((context.parsed / total) * 100).toFixed(1);
+                                    return `${context.label}: ${context.parsed} (${percent}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function criarGraficoGrupos(stats) {
+            const canvas = document.getElementById('chartGrupos');
+            if (!canvas) return;
+
+            const grupos = Object.keys(stats.byGroup);
+            const n1Data = grupos.map(g => stats.byGroup[g].n1);
+            const n2Data = grupos.map(g => stats.byGroup[g].n2);
+            const conjuntoData = grupos.map(g => stats.byGroup[g].conjunto);
+
+            new Chart(canvas, {
+                type: 'bar',
+                data: {
+                    labels: grupos,
+                    datasets: [
+                        { label: 'N1', data: n1Data, backgroundColor: '#667eea' },
+                        { label: 'N2', data: n2Data, backgroundColor: '#ff9f43' },
+                        { label: 'N1+N2', data: conjuntoData, backgroundColor: '#2ed573' }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'top' } },
+                    scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+                }
+            });
+        }
+
+        function voltarFormulario() {
+            dashboardSection.classList.add('hidden');
+            formSection.classList.remove('hidden');
+            uploadForm.reset();
+            formMessage.innerHTML = '';
+        }
+    </script>
+</body>
+</html>
