@@ -3,21 +3,59 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Análise SCFF</title>
+    <title>Análise SCFF v2</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: Arial, sans-serif;
-            background: #667eea;
+            background: linear-gradient(135deg, #0D4680 0%, #1a5fa0 100%);
             padding: 20px;
             min-height: 100vh;
+            position: relative;
+            overflow-x: hidden;
         }
-        .container { max-width: 1200px; margin: 0 auto; }
-        .header { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
-        .header h1 { color: #333; margin-bottom: 5px; }
-        .header p { color: #666; }
-        .form-card { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                linear-gradient(0deg, transparent 24%, rgba(13, 70, 128, 0.5) 25%, rgba(13, 70, 128, 0.5) 26%, transparent 27%, transparent 74%, rgba(13, 70, 128, 0.5) 75%, rgba(13, 70, 128, 0.5) 76%, transparent 77%, transparent),
+                linear-gradient(90deg, transparent 24%, rgba(13, 70, 128, 0.5) 25%, rgba(13, 70, 128, 0.5) 26%, transparent 27%, transparent 74%, rgba(13, 70, 128, 0.5) 75%, rgba(13, 70, 128, 0.5) 76%, transparent 77%, transparent);
+            background-size: 50px 50px;
+            pointer-events: none;
+            z-index: 0;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+        .header { 
+            background: white; 
+            padding: 20px; 
+            border-radius: 8px; 
+            margin-bottom: 20px;
+            box-shadow: 0 8px 32px rgba(13, 70, 128, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .header h1 { color: #333; margin-bottom: 5px; font-size: 32px; text-align: center; }
+        .form-card { 
+            background: white; 
+            padding: 20px; 
+            border-radius: 8px; 
+            margin-bottom: 20px;
+            box-shadow: 0 8px 32px rgba(13, 70, 128, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
         .form-group { margin-bottom: 15px; }
         .form-group label { display: block; margin-bottom: 5px; font-weight: bold; color: #333; }
         .form-group input, .form-group select {
@@ -36,39 +74,109 @@
             cursor: pointer;
             font-weight: bold;
             font-size: 14px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
         }
-        .btn-submit {
-            background: #667eea;
-            color: white;
+        
+        button::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
             width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.2);
+            transition: left 0.3s ease;
         }
-        .btn-submit:hover { background: #5568d3; }
-        .btn-back {
-            background: #f5f5f5;
-            color: #333;
-            margin-bottom: 20px;
+        
+        button:hover::before {
+            left: 100%;
         }
+        .btn-submit { 
+            background: linear-gradient(135deg, #0D4680 0%, #1a5fa0 100%);
+            color: white; 
+            width: 100%;
+            box-shadow: 0 4px 15px rgba(13, 70, 128, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .btn-submit:hover { 
+            background: linear-gradient(135deg, #1a5fa0 0%, #0D4680 100%);
+            box-shadow: 0 6px 20px rgba(13, 70, 128, 0.4);
+            transform: translateY(-2px);
+        }
+        .btn-back { background: #f5f5f5; color: #333; margin-bottom: 20px; width: auto; }
+        .btn-add { background: #2ed573; color: white; padding: 10px 20px; margin-top: 10px; }
         .error { background: #fee; color: #c33; padding: 15px; border-radius: 4px; margin: 10px 0; border-left: 4px solid #f44; }
         .success { background: #efe; color: #3a3; padding: 15px; border-radius: 4px; margin: 10px 0; }
         .hidden { display: none !important; }
-        .dashboard { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        .dashboard { 
+            background: white; 
+            padding: 20px; 
+            border-radius: 8px; 
+            margin-bottom: 20px;
+            box-shadow: 0 8px 32px rgba(13, 70, 128, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            position: relative;
+        }
+        
+        .dashboard::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #667eea, transparent);
+            border-radius: 8px 8px 0 0;
+        }
         .dashboard h2 { color: #333; margin-bottom: 15px; border-bottom: 2px solid #667eea; padding-bottom: 10px; }
         .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px; }
         @media (max-width: 768px) { .stats { grid-template-columns: 1fr; } }
         .stat-box {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #0D4680 0%, #1a5fa0 100%);
             color: white;
             padding: 20px;
             border-radius: 6px;
             text-align: center;
+            box-shadow: 0 8px 32px rgba(13, 70, 128, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .stat-box::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, transparent 0%, rgba(255, 255, 255, 0.05) 50%, transparent 100%);
+            pointer-events: none;
         }
         .stat-number { font-size: 32px; font-weight: bold; }
         .stat-label { font-size: 14px; margin-top: 5px; }
         .stat-percent { font-size: 20px; margin-top: 10px; font-weight: bold; }
-        table { width: 100%; border-collapse: collapse; margin: 15px 0; }
-        th { background: #667eea; color: white; padding: 12px; text-align: left; }
-        td { padding: 10px; border-bottom: 1px solid #eee; }
-        tr:hover { background: #f9f9f9; }
+        .meta-section {
+            background: #f9f9f9;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .meta-row { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; align-items: center; }
+        @media (max-width: 1024px) { .meta-row { grid-template-columns: 1fr 1fr; } }
+        .meta-input { padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        .indicador {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            margin-right: 10px;
+        }
+        .indicador.verde { background: #2ed573; }
+        .indicador.amarelo { background: #ff9f43; }
+        .indicador.vermelho { background: #f44; }
         .charts-container {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -85,66 +193,117 @@
             padding: 20px;
             border-radius: 8px;
             position: relative;
-            height: 450px;
+            height: 600px;
+            box-shadow: 0 8px 32px rgba(13, 70, 128, 0.3);
+            display: flex;
+            flex-direction: column;
+            border: 1px solid rgba(255, 255, 255, 0.2);
         }
-        .chart-box h3 { color: #333; margin-bottom: 15px; }
+        
+        .chart-box::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #667eea, transparent);
+            border-radius: 8px 8px 0 0;
+        }
+        .chart-box h3 { color: #333; margin-bottom: 15px; font-size: 16px; flex-shrink: 0; }
+        .chart-canvas-wrapper {
+            position: relative;
+            height: 420px;
+            flex-shrink: 0;
+        }
+        .historico-list {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 32px rgba(13, 70, 128, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .historico-item {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: linear-gradient(90deg, rgba(13, 70, 128, 0.05) 0%, transparent 100%);
+            transition: all 0.3s ease;
+        }
+        
+        .historico-item:hover {
+            background: linear-gradient(90deg, rgba(13, 70, 128, 0.1) 0%, transparent 100%);
+            box-shadow: 0 4px 12px rgba(13, 70, 128, 0.2);
+        }
+        .btn-small { padding: 5px 10px; font-size: 12px; margin-left: 10px; }
+        table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+        th { background: #667eea; color: white; padding: 12px; text-align: left; }
+        td { padding: 10px; border-bottom: 1px solid #eee; }
+        tr:hover { background: #f9f9f9; }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
             <h1>📊 Análise de Atendimentos SCFF</h1>
-            <p>Processar planilha Excel e gerar relatórios</p>
         </div>
 
         <!-- FORMULÁRIO -->
         <div id="formSection" class="form-card">
+            <h3>📁 Upload de Dados</h3>
             <form id="uploadForm">
                 <div class="form-row">
                     <div class="form-group">
-                        <label>📁 Arquivo Excel (.xlsx)</label>
+                        <label>Arquivo Excel (.xlsx)</label>
                         <input type="file" id="fileInput" accept=".xlsx" required>
                     </div>
                     <div class="form-group">
-                        <label>📅 Mês de Referência</label>
-                        <input type="text" id="monthInput" placeholder="Ex: Outubro" required>
+                        <label>Mês de Referência</label>
+                        <select id="monthInput" required>
+                            <option value="">-- Selecione um mês --</option>
+                            <option value="Janeiro">Janeiro</option>
+                            <option value="Fevereiro">Fevereiro</option>
+                            <option value="Março">Março</option>
+                            <option value="Abril">Abril</option>
+                            <option value="Maio">Maio</option>
+                            <option value="Junho">Junho</option>
+                            <option value="Julho">Julho</option>
+                            <option value="Agosto">Agosto</option>
+                            <option value="Setembro">Setembro</option>
+                            <option value="Outubro">Outubro</option>
+                            <option value="Novembro">Novembro</option>
+                            <option value="Dezembro">Dezembro</option>
+                        </select>
                     </div>
                 </div>
                 <button type="submit" class="btn-submit">Processar Dados</button>
             </form>
             <div id="formMessage"></div>
+
+            <div class="historico-list" id="historicoSection" style="display: none;">
+                <h3>📅 Análises Anteriores</h3>
+                <div id="historicoList"></div>
+            </div>
         </div>
 
         <!-- DASHBOARD -->
         <div id="dashboardSection" class="hidden">
             <button class="btn-back" onclick="voltarFormulario()">← Voltar</button>
+            <div style="text-align: right; margin-bottom: 20px;">
+                <button onclick="baixarPDF()" style="background: #2ed573; color: white; padding: 10px 20px;">📥 Baixar Relatório PDF</button>
+            </div>
             <div id="dashboardContent"></div>
         </div>
     </div>
 
     <script>
-        // Carregar XLSX
-        const xlsxUrls = [
-            'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
-            'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
-            'https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js'
-        ];
-
-        function carregarXLSX(urls, indice = 0) {
-            if (indice >= urls.length) {
-                console.error('❌ Falha ao carregar XLSX');
-                return;
-            }
-            const script = document.createElement('script');
-            script.src = urls[indice];
-            script.onload = () => console.log('✅ XLSX carregado:', urls[indice]);
-            script.onerror = () => {
-                console.warn('⚠️ Falha:', urls[indice]);
-                carregarXLSX(urls, indice + 1);
-            };
-            document.head.appendChild(script);
-        }
-        carregarXLSX(xlsxUrls);
+        let historicoAnalises = JSON.parse(localStorage.getItem('historicoSCFF')) || [];
 
         const uploadForm = document.getElementById('uploadForm');
         const fileInput = document.getElementById('fileInput');
@@ -166,18 +325,6 @@
                 return;
             }
 
-            let tentativas = 0;
-            while (typeof XLSX === 'undefined' && tentativas < 30) {
-                formMessage.innerHTML = `<div class="success">⏳ Carregando... ${tentativas}s</div>`;
-                await new Promise(resolve => setTimeout(resolve, 500));
-                tentativas++;
-            }
-
-            if (typeof XLSX === 'undefined') {
-                formMessage.innerHTML = '<div class="error">❌ Erro ao carregar XLSX</div>';
-                return;
-            }
-
             try {
                 formMessage.innerHTML = '<div class="success">⏳ Processando...</div>';
                 const arrayBuffer = await file.arrayBuffer();
@@ -188,6 +335,16 @@
                 if (jsonData.length === 0) throw new Error('Arquivo vazio');
                 
                 const stats = processarDados(jsonData, month);
+                
+                historicoAnalises.push({
+                    id: Date.now(),
+                    mes: month,
+                    data: new Date().toLocaleDateString(),
+                    stats: stats
+                });
+                localStorage.setItem('historicoSCFF', JSON.stringify(historicoAnalises));
+                atualizarHistorico();
+
                 formSection.classList.add('hidden');
                 dashboardSection.classList.remove('hidden');
                 mostrarDashboard(stats);
@@ -251,7 +408,6 @@
                 }
             });
 
-            console.log('Stats finais:', stats);
             return stats;
         }
 
@@ -282,14 +438,49 @@
                     </div>
                 </div>
 
+                <div class="meta-section">
+                    <h2>🎯 Definir Metas</h2>
+                    <div class="meta-row">
+                        <div>
+                            <label>Meta N1 (%)</label>
+                            <input type="number" class="meta-input" id="metaN1" value="50" min="0" max="100">
+                        </div>
+                        <div>
+                            <label>Meta N2 (%)</label>
+                            <input type="number" class="meta-input" id="metaN2" value="10" min="0" max="100">
+                        </div>
+                        <div>
+                            <label>Meta N1+N2 (%)</label>
+                            <input type="number" class="meta-input" id="metaConjunto" value="40" min="0" max="100">
+                        </div>
+                        <div>
+                            <button onclick="compararMetas(${stats.n1}, ${stats.n2}, ${stats.conjunto}, ${stats.total})" class="btn-add">Comparar com Meta</button>
+                        </div>
+                    </div>
+                    <div id="resultadoMeta"></div>
+                </div>
+
                 <div class="charts-container">
                     <div class="chart-box">
                         <h3>📊 Distribuição Global</h3>
-                        <canvas id="chartGlobal"></canvas>
+                        <div class="chart-canvas-wrapper">
+                            <canvas id="chartGlobal"></canvas>
+                        </div>
                     </div>
                     <div class="chart-box">
                         <h3>📊 Por Grupo de Atendimento</h3>
-                        <canvas id="chartGrupos"></canvas>
+                        <div class="chart-canvas-wrapper">
+                            <canvas id="chartGrupos"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="chartEvolucao" class="hidden">
+                    <div class="chart-box" style="height: auto; margin-bottom: 20px;">
+                        <h3>📈 Evolução Mensal</h3>
+                        <div style="position: relative; height: 400px;">
+                            <canvas id="chartTendencia"></canvas>
+                        </div>
                     </div>
                 </div>
 
@@ -308,8 +499,15 @@
                         <tbody>
             `;
 
+            let totalN1 = 0, totalN2 = 0, totalConjunto = 0, totalGeral = 0;
+
             Object.entries(stats.byGroup).forEach(([grupo, dados]) => {
                 const total = dados.n1 + dados.n2 + dados.conjunto;
+                totalN1 += dados.n1;
+                totalN2 += dados.n2;
+                totalConjunto += dados.conjunto;
+                totalGeral += total;
+                
                 html += `
                     <tr>
                         <td><strong>${grupo}</strong></td>
@@ -322,21 +520,91 @@
             });
 
             html += `
+                            <tr style="background: #667eea; color: white; font-weight: bold;">
+                                <td>TOTAL</td>
+                                <td style="text-align: center;">${totalN1}</td>
+                                <td style="text-align: center;">${totalN2}</td>
+                                <td style="text-align: center;">${totalConjunto}</td>
+                                <td style="text-align: center;">${totalGeral}</td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>
             `;
-
-            if (stats.errors.length > 0) {
-                html += `<div class="error"><strong>⚠️ ${stats.errors.length} aviso(s)</strong></div>`;
-            }
 
             dashboardContent.innerHTML = html;
             
             setTimeout(() => {
                 criarGraficoGlobal(stats);
                 criarGraficoGrupos(stats);
+                if (historicoAnalises.length > 1) {
+                    criarGraficoEvolucao();
+                }
             }, 100);
+        }
+
+        function compararMetas(n1Real, n2Real, conjuntoReal, total) {
+            const metaN1 = parseFloat(document.getElementById('metaN1').value);
+            const metaN2 = parseFloat(document.getElementById('metaN2').value);
+            const metaConjunto = parseFloat(document.getElementById('metaConjunto').value);
+
+            const percN1 = ((n1Real / total) * 100).toFixed(1);
+            const percN2 = ((n2Real / total) * 100).toFixed(1);
+            const percConjunto = ((conjuntoReal / total) * 100).toFixed(1);
+
+            const verificarMeta = (realizado, meta) => {
+                if (realizado >= meta) return { cor: 'verde', emoji: '✅', status: 'Atingido' };
+                if (realizado >= meta * 0.9) return { cor: 'amarelo', emoji: '⚠️', status: 'Próximo' };
+                return { cor: 'vermelho', emoji: '❌', status: 'Não Atingido' };
+            };
+
+            const resultN1 = verificarMeta(percN1, metaN1);
+            const resultN2 = verificarMeta(percN2, metaN2);
+            const resultConjunto = verificarMeta(percConjunto, metaConjunto);
+
+            let html = `
+                <div style="margin-top: 20px; padding: 20px; background: white; border-radius: 8px;">
+                    <h3>📊 Resultado da Comparação</h3>
+                    <table style="width: 100%; margin-top: 15px;">
+                        <thead>
+                            <tr style="background: #667eea; color: white;">
+                                <th style="padding: 10px;">Tipo</th>
+                                <th style="padding: 10px; text-align: center;">Meta</th>
+                                <th style="padding: 10px; text-align: center;">Realizado</th>
+                                <th style="padding: 10px; text-align: center;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td style="padding: 10px;"><strong>N1</strong></td>
+                                <td style="padding: 10px; text-align: center;">${metaN1}%</td>
+                                <td style="padding: 10px; text-align: center;">${percN1}%</td>
+                                <td style="padding: 10px; text-align: center;">
+                                    <span class="indicador ${resultN1.cor}"></span>${resultN1.emoji} ${resultN1.status}
+                                </td>
+                            </tr>
+                            <tr style="background: #f5f5f5;">
+                                <td style="padding: 10px;"><strong>N2</strong></td>
+                                <td style="padding: 10px; text-align: center;">${metaN2}%</td>
+                                <td style="padding: 10px; text-align: center;">${percN2}%</td>
+                                <td style="padding: 10px; text-align: center;">
+                                    <span class="indicador ${resultN2.cor}"></span>${resultN2.emoji} ${resultN2.status}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 10px;"><strong>N1+N2</strong></td>
+                                <td style="padding: 10px; text-align: center;">${metaConjunto}%</td>
+                                <td style="padding: 10px; text-align: center;">${percConjunto}%</td>
+                                <td style="padding: 10px; text-align: center;">
+                                    <span class="indicador ${resultConjunto.cor}"></span>${resultConjunto.emoji} ${resultConjunto.status}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            `;
+
+            document.getElementById('resultadoMeta').innerHTML = html;
         }
 
         function criarGraficoGlobal(stats) {
@@ -349,7 +617,7 @@
                     labels: ['N1', 'N2', 'N1+N2'],
                     datasets: [{
                         data: [stats.n1, stats.n2, stats.conjunto],
-                        backgroundColor: ['#667eea', '#ff9f43', '#2ed573'],
+                        backgroundColor: ['#2ed573', '#ff9f43', '#667eea'],
                         borderColor: '#fff',
                         borderWidth: 2
                     }]
@@ -369,7 +637,27 @@
                             }
                         }
                     }
-                }
+                },
+                plugins: [{
+                    id: 'textCenter',
+                    beforeDatasetsDraw(chart) {
+                        const { width, height, ctx } = chart;
+                        ctx.restore();
+                        
+                        const fontSize = (height / 200).toFixed(2);
+                        ctx.font = `${fontSize}em sans-serif`;
+                        ctx.textBaseline = 'middle';
+                        
+                        const text = `Total: ${stats.total}`;
+                        const textX = Math.round((width - ctx.measureText(text).width) / 2);
+                        const textY = height / 2;
+                        
+                        ctx.fillStyle = '#333';
+                        ctx.font = 'bold 16px sans-serif';
+                        ctx.fillText(text, textX, textY);
+                        ctx.save();
+                    }
+                }]
             });
         }
 
@@ -387,9 +675,9 @@
                 data: {
                     labels: grupos,
                     datasets: [
-                        { label: 'N1', data: n1Data, backgroundColor: '#667eea' },
+                        { label: 'N1', data: n1Data, backgroundColor: '#2ed573' },
                         { label: 'N2', data: n2Data, backgroundColor: '#ff9f43' },
-                        { label: 'N1+N2', data: conjuntoData, backgroundColor: '#2ed573' }
+                        { label: 'N1+N2', data: conjuntoData, backgroundColor: '#667eea' }
                     ]
                 },
                 options: {
@@ -397,8 +685,301 @@
                     maintainAspectRatio: false,
                     plugins: { legend: { position: 'top' } },
                     scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+                },
+                plugins: [{
+                    id: 'customDataLabels',
+                    afterDatasetsDraw(chart) {
+                        const { ctx } = chart;
+                        ctx.font = 'bold 9px Arial';
+                        ctx.textAlign = 'center';
+                        ctx.fillStyle = '#000';
+
+                        chart.data.datasets.forEach((dataset, datasetIndex) => {
+                            const meta = chart.getDatasetMeta(datasetIndex);
+                            
+                            meta.data.forEach((datapoint, index) => {
+                                const value = dataset.data[index];
+                                
+                                if (value > 0) {
+                                    let totalGrupo = 0;
+                                    chart.data.datasets.forEach(ds => {
+                                        totalGrupo += ds.data[index] || 0;
+                                    });
+                                    
+                                    const percentageGrupo = ((value / totalGrupo) * 100).toFixed(1);
+                                    const { x, y } = datapoint.tooltipPosition();
+                                    
+                                    ctx.fillStyle = '#000';
+                                    ctx.font = 'bold 9px Arial';
+                                    ctx.fillText(`${value}`, x, y - 5);
+                                    ctx.font = '8px Arial';
+                                    ctx.fillText(`(${percentageGrupo}%)`, x, y + 5);
+                                }
+                            });
+                        });
+                    }
+                }]
+            });
+        }
+
+        function criarGraficoEvolucao() {
+            const canvas = document.getElementById('chartTendencia');
+            if (!canvas) return;
+
+            document.getElementById('chartEvolucao').classList.remove('hidden');
+
+            const meses = historicoAnalises.map(h => h.mes);
+            const n1Values = historicoAnalises.map(h => h.stats.n1);
+            const n2Values = historicoAnalises.map(h => h.stats.n2);
+            const conjuntoValues = historicoAnalises.map(h => h.stats.conjunto);
+
+            new Chart(canvas, {
+                type: 'line',
+                data: {
+                    labels: meses,
+                    datasets: [
+                        {
+                            label: 'N1',
+                            data: n1Values,
+                            borderColor: '#667eea',
+                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        },
+                        {
+                            label: 'N2',
+                            data: n2Values,
+                            borderColor: '#ff9f43',
+                            backgroundColor: 'rgba(255, 159, 67, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        },
+                        {
+                            label: 'N1+N2',
+                            data: conjuntoValues,
+                            borderColor: '#2ed573',
+                            backgroundColor: 'rgba(46, 213, 115, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'top' } },
+                    scales: { y: { beginAtZero: true } }
                 }
             });
+        }
+
+        function atualizarHistorico() {
+            const historicoSection = document.getElementById('historicoSection');
+            const historicoList = document.getElementById('historicoList');
+
+            if (historicoAnalises.length > 0) {
+                historicoSection.style.display = 'block';
+                historicoList.innerHTML = historicoAnalises.map(item => `
+                    <div class="historico-item">
+                        <span>📅 ${item.mes} - ${item.data} (${item.stats.total} atendimentos)</span>
+                        <div>
+                            <button class="btn-small" onclick="carregarAnalise(${item.id})">Carregar</button>
+                            <button class="btn-small" onclick="deletarAnalise(${item.id})" style="background: #f44;">Deletar</button>
+                        </div>
+                    </div>
+                `).join('');
+            }
+        }
+
+        function carregarAnalise(id) {
+            const analise = historicoAnalises.find(h => h.id === id);
+            if (analise) {
+                formSection.classList.add('hidden');
+                dashboardSection.classList.remove('hidden');
+                mostrarDashboard(analise.stats);
+            }
+        }
+
+        function deletarAnalise(id) {
+            if (confirm('Tem certeza que deseja deletar essa análise?')) {
+                historicoAnalises = historicoAnalises.filter(h => h.id !== id);
+                localStorage.setItem('historicoSCFF', JSON.stringify(historicoAnalises));
+                atualizarHistorico();
+            }
+        }
+
+        function baixarPDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF('p', 'mm', 'a4');
+            
+            let yPosition = 15;
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const pageHeight = doc.internal.pageSize.getHeight();
+            const stats = historicoAnalises[historicoAnalises.length - 1].stats;
+            
+            // Título
+            doc.setFontSize(18);
+            doc.setTextColor(13, 70, 128);
+            doc.text('Analise de Atendimentos SCFF', pageWidth / 2, yPosition, { align: 'center' });
+            yPosition += 12;
+            
+            // Mês e data
+            doc.setFontSize(10);
+            doc.setTextColor(100, 100, 100);
+            const dataAtual = new Date().toLocaleDateString('pt-BR');
+            doc.text(`Mes: ${stats.month} | Gerado em: ${dataAtual}`, pageWidth / 2, yPosition, { align: 'center' });
+            yPosition += 10;
+            
+            // Linha separadora
+            doc.setDrawColor(13, 70, 128);
+            doc.line(15, yPosition, pageWidth - 15, yPosition);
+            yPosition += 8;
+            
+            // Resumo de Atendimentos
+            doc.setFontSize(12);
+            doc.setTextColor(0, 0, 0);
+            doc.text('Resumo de Atendimentos', 15, yPosition);
+            yPosition += 10;
+            
+            const n1Perc = stats.total > 0 ? ((stats.n1 / stats.total) * 100).toFixed(1) : 0;
+            const n2Perc = stats.total > 0 ? ((stats.n2 / stats.total) * 100).toFixed(1) : 0;
+            const conjuntoPerc = stats.total > 0 ? ((stats.conjunto / stats.total) * 100).toFixed(1) : 0;
+            
+            doc.setFontSize(10);
+            const resumoTexto = `N1: ${stats.n1} (${n1Perc}%) | N2: ${stats.n2} (${n2Perc}%) | N1+N2: ${stats.conjunto} (${conjuntoPerc}%) | Total: ${stats.total}`;
+            doc.text(resumoTexto, 15, yPosition);
+            yPosition += 12;
+            
+            // Gráfico Global
+            const chartGlobal = document.getElementById('chartGlobal');
+            if (chartGlobal && yPosition < pageHeight - 100) {
+                try {
+                    const imgGlobal = chartGlobal.toDataURL('image/png');
+                    doc.addImage(imgGlobal, 'PNG', 15, yPosition, 85, 60);
+                    yPosition += 65;
+                } catch(e) {
+                    console.log('Erro ao capturar gráfico global');
+                }
+            }
+            
+            // Nova página se necessário
+            if (yPosition > pageHeight - 100) {
+                doc.addPage();
+                yPosition = 15;
+            }
+            
+            // Atendimentos por Grupo
+            doc.setFontSize(12);
+            doc.setTextColor(0, 0, 0);
+            doc.text('Atendimentos por Grupo', 15, yPosition);
+            yPosition += 10;
+            
+            // Gráfico de Grupos
+            const chartGrupos = document.getElementById('chartGrupos');
+            if (chartGrupos && yPosition < pageHeight - 100) {
+                try {
+                    const imgGrupos = chartGrupos.toDataURL('image/png');
+                    doc.addImage(imgGrupos, 'PNG', 15, yPosition, pageWidth - 30, 80);
+                    yPosition += 85;
+                } catch(e) {
+                    console.log('Erro ao capturar gráfico de grupos');
+                }
+            }
+            
+            // Nova página se necessário
+            if (yPosition > pageHeight - 100) {
+                doc.addPage();
+                yPosition = 15;
+            }
+            
+            // Evolução Mensal
+            if (historicoAnalises.length > 1) {
+                doc.setFontSize(12);
+                doc.text('Evolucao Mensal', 15, yPosition);
+                yPosition += 10;
+                
+                const chartEvolucao = document.getElementById('chartTendencia');
+                if (chartEvolucao && yPosition < pageHeight - 100) {
+                    try {
+                        const imgEvolucao = chartEvolucao.toDataURL('image/png');
+                        doc.addImage(imgEvolucao, 'PNG', 15, yPosition, pageWidth - 30, 80);
+                        yPosition += 85;
+                    } catch(e) {
+                        console.log('Erro ao capturar gráfico de evolução');
+                    }
+                }
+                
+                if (yPosition > pageHeight - 100) {
+                    doc.addPage();
+                    yPosition = 15;
+                }
+            }
+            
+            // Detalhamento por Grupo - Tabela
+            doc.setFontSize(12);
+            doc.text('Detalhamento por Grupo', 15, yPosition);
+            yPosition += 10;
+            
+            // Tabela
+            const table = document.querySelector('table');
+            if (table) {
+                const rows = [];
+                const headers = [];
+                
+                // Pegar headers
+                table.querySelectorAll('thead th').forEach(th => {
+                    headers.push(th.textContent);
+                });
+                rows.push(headers);
+                
+                // Pegar dados
+                table.querySelectorAll('tbody tr').forEach(tr => {
+                    const rowData = [];
+                    tr.querySelectorAll('td').forEach(td => {
+                        rowData.push(td.textContent);
+                    });
+                    rows.push(rowData);
+                });
+                
+                // Desenhar tabela
+                doc.setFontSize(9);
+                const colWidths = [50, 18, 18, 18, 18];
+                const rowHeight = 7;
+                let tableY = yPosition;
+                
+                rows.forEach((row, rowIndex) => {
+                    if (tableY > pageHeight - 15) {
+                        doc.addPage();
+                        tableY = 15;
+                    }
+                    
+                    let xPos = 15;
+                    row.forEach((cell, colIndex) => {
+                        if (rowIndex === 0) {
+                            doc.setFillColor(13, 70, 128);
+                            doc.setTextColor(255, 255, 255);
+                        } else if (row[0] === 'TOTAL') {
+                            doc.setFillColor(13, 70, 128);
+                            doc.setTextColor(255, 255, 255);
+                        } else {
+                            doc.setFillColor(245, 245, 245);
+                            doc.setTextColor(0, 0, 0);
+                        }
+                        
+                        doc.rect(xPos, tableY, colWidths[colIndex], rowHeight, 'F');
+                        doc.text(String(cell).trim(), xPos + 2, tableY + 5, { maxWidth: colWidths[colIndex] - 4 });
+                        xPos += colWidths[colIndex];
+                    });
+                    tableY += rowHeight;
+                });
+            }
+            
+            // Rodapé
+            doc.setFontSize(8);
+            doc.setTextColor(150, 150, 150);
+            doc.text('© 2025 Sistema de Analise SCFF - Relatorio Gerado Automaticamente', pageWidth / 2, pageHeight - 10, { align: 'center' });
+            
+            doc.save('relatorio_scff.pdf');
         }
 
         function voltarFormulario() {
@@ -407,6 +988,8 @@
             uploadForm.reset();
             formMessage.innerHTML = '';
         }
+
+        atualizarHistorico();
     </script>
 </body>
 </html>
