@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Análise SCFF v2</title>
+    <title>SCFF - Dashboard Análise de Atendimentos</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -251,7 +251,9 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>📊 Análise de Atendimentos SCFF</h1>
+            <h1 style="font-size: 38px; font-weight: 900; letter-spacing: 4px; color: #0D4680; margin-bottom: 4px; text-align: center;">SCFF</h1>
+            <p style="font-size: 14px; color: #555; margin-bottom: 2px; text-align: center;">Sistema Contábil Fiscal Financeiro</p>
+            <p style="font-size: 16px; font-weight: bold; color: #333; text-align: center;">Dashboard Análise de Atendimentos</p>
         </div>
 
         <!-- FORMULÁRIO -->
@@ -335,7 +337,19 @@
                 if (jsonData.length === 0) throw new Error('Arquivo vazio');
                 
                 const stats = processarDados(jsonData, month);
-                
+
+                // Validar se dados foram processados corretamente antes de salvar
+                if (stats.errors.length > 0 && stats.total === 0) {
+                    const erroMsg = stats.errors.map(e => e.msg).join('<br><br>');
+                    formMessage.innerHTML = `<div class="error">❌ Nenhum dado processado.<br><br>${erroMsg}</div>`;
+                    return;
+                }
+
+                if (stats.total === 0) {
+                    formMessage.innerHTML = `<div class="error">❌ Nenhum registro válido encontrado. Verifique se o arquivo contém colunas de Grupo, N1 e N2 preenchidas corretamente.</div>`;
+                    return;
+                }
+
                 historicoAnalises.push({
                     id: Date.now(),
                     mes: month,
@@ -365,6 +379,11 @@
             return 'NÃO';
         }
 
+        function normalizarTexto(str) {
+            // Remove acentos e converte para maiúsculas para comparação
+            return String(str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
+        }
+
         function processarDados(jsonData, month) {
             const stats = {
                 month: month,
@@ -377,91 +396,91 @@
             };
 
             if (jsonData.length === 0) return stats;
-            
-            // Remover linhas vazias
+
+            // Remover linhas completamente vazias
             jsonData = jsonData.filter(row => Object.values(row).some(val => val !== null && val !== '' && val !== undefined));
-            
+
             if (jsonData.length === 0) return stats;
-            
-            const headerRow = jsonData[0];
-            const colunas = Object.keys(headerRow);
-            
+
+            // sheet_to_json já usa a linha 1 do Excel como header e retorna os dados a partir do índice 0
+            const colunas = Object.keys(jsonData[0]);
+
             console.log('Colunas encontradas:', colunas);
-            
-            // Procurar coluna "Nome do Status" para Grupo
+            console.log('Primeira linha de dados:', jsonData[0]);
+
+            // --- DETECÇÃO DE COLUNA DE GRUPO ---
+            // Termos aceitos para coluna de grupo (sem acentos para comparação segura)
+            const termosGrupo = ['grupo', 'equipe', 'departamento', 'team', 'setor', 'categoria', 'nome do status', 'nome status'];
+
             let grupoCol = colunas.find(col => {
-                const lower = col.toLowerCase().trim();
-                return lower.includes('nome') && lower.includes('status');
+                const norm = normalizarTexto(col);
+                return termosGrupo.some(t => norm.includes(normalizarTexto(t)));
             });
-            
-            // Se não encontrou "Nome do Status", procurar por outras variações
+
+            // Fallback: primeira coluna do arquivo
             if (!grupoCol) {
-                grupoCol = colunas.find(col => {
-                    const lower = col.toLowerCase().trim();
-                    return lower.includes('grupo') || 
-                           lower.includes('equipe') ||
-                           lower.includes('departamento') ||
-                           lower.includes('team') ||
-                           lower.includes('setor') ||
-                           lower.includes('nome');
-                });
+                grupoCol = colunas[0];
+                console.warn(`Coluna de grupo não encontrada pelos termos. Usando primeira coluna como fallback: "${grupoCol}"`);
             }
-            
-            // Procurar colunas que contenham dados de resolução
-            // Em arquivos com "Vários itens", podem ser colunas dinâmicas
+
+            // --- DETECÇÃO DE COLUNAS DE STATUS (N1 e N2) ---
+            // Prioridade 1: colunas com "resolvido", "resolved", "n1", "n2", "status"
             let statusCols = colunas.filter(col => {
-                const lower = col.toLowerCase().trim();
-                // Excluir a coluna de grupo e colunas vazias
-                if (lower.includes('nome') && lower.includes('status')) return false;
-                if (lower === '' || lower === 'vários itens') return false;
-                // Incluir qualquer coluna que não seja a de grupo
-                return col.trim() !== '' && col !== grupoCol;
+                if (col === grupoCol) return false;
+                const norm = normalizarTexto(col);
+                return norm.includes('resolvido') ||
+                       norm.includes('resolved') ||
+                       norm.includes('status') ||
+                       norm.includes('aberto') ||
+                       norm.includes('fechado') ||
+                       /N[12]/.test(norm);
             });
-            
-            console.log('Grupo coluna:', grupoCol);
-            console.log('Status colunas encontradas:', statusCols);
-            
-            // Se encontrou muitas colunas, pegar as primeiras 2 que parecem conter dados
-            if (statusCols.length > 2) {
-                statusCols = statusCols.slice(0, 2);
-            }
-            
-            if (!grupoCol) {
-                stats.errors.push({ 
-                    line: 0, 
-                    msg: `Coluna de Grupo não encontrada. Colunas: ${colunas.join(', ')}` 
-                });
-                return stats;
-            }
-            
+
+            // Prioridade 2: qualquer coluna que não seja a de grupo
             if (statusCols.length < 2) {
-                stats.errors.push({ 
-                    line: 0, 
-                    msg: `Menos de 2 colunas de status encontradas. Encontrado: ${statusCols.join(', ')}. Total de colunas: ${colunas.join(', ')}` 
+                statusCols = colunas.filter(col => col !== grupoCol);
+                console.warn(`Colunas de status não encontradas pelos termos. Usando todas as demais colunas: ${statusCols.join(', ')}`);
+            }
+
+            console.log('Coluna de grupo:', grupoCol);
+            console.log('Colunas de status:', statusCols);
+
+            if (!grupoCol) {
+                stats.errors.push({ line: 0, msg: `Nenhuma coluna encontrada no arquivo. Verifique se o arquivo está correto.` });
+                return stats;
+            }
+
+            if (statusCols.length < 2) {
+                stats.errors.push({
+                    line: 0,
+                    msg: `São necessárias pelo menos 2 colunas de status (N1 e N2). Encontradas: ${statusCols.join(', ')}. Colunas disponíveis: ${colunas.join(', ')}`
                 });
                 return stats;
             }
 
-            console.log('Processando com:', { grupoCol, statusCols });
+            const colN1 = statusCols[0];
+            const colN2 = statusCols[1];
 
-            // Processar dados começando da linha 1
-            for (let idx = 1; idx < jsonData.length; idx++) {
+            console.log(`Mapeamento: Grupo="${grupoCol}" | N1="${colN1}" | N2="${colN2}"`);
+
+            // --- PROCESSAMENTO DAS LINHAS ---
+            // idx começa em 0 pois sheet_to_json já eliminou a linha de header
+            for (let idx = 0; idx < jsonData.length; idx++) {
                 try {
                     const row = jsonData[idx];
-                    
-                    let grupo = String(row[grupoCol] || 'Sem Grupo').trim();
-                    if (!grupo || grupo === '') continue;
-                    
-                    // Obter valores de status
-                    const val1 = String(row[statusCols[0]] || '').trim();
-                    const val2 = String(row[statusCols[1]] || '').trim();
-                    
+
+                    let grupo = String(row[grupoCol] || '').trim();
+                    if (!grupo) continue;
+
+                    const val1 = String(row[colN1] || '').trim();
+                    const val2 = String(row[colN2] || '').trim();
+
                     const n1 = normalize(val1);
                     const n2 = normalize(val2);
-                    
+
                     // Debug das primeiras 5 linhas
-                    if (idx <= 5) {
-                        console.log(`Linha ${idx}: Grupo="${grupo}", ${statusCols[0]}="${val1}" (${n1}), ${statusCols[1]}="${val2}" (${n2})`);
+                    if (idx < 5) {
+                        console.log(`[Linha ${idx + 2}] Grupo="${grupo}" | ${colN1}="${val1}"(→${n1}) | ${colN2}="${val2}"(→${n2})`);
                     }
 
                     let tipo = null;
@@ -472,6 +491,7 @@
                     } else if (n2 === 'SIM') {
                         tipo = 'n2';
                     }
+                    // Linhas com NÃO/NÃO são ignoradas (sem resolução registrada)
 
                     if (tipo) {
                         stats.total++;
@@ -483,12 +503,10 @@
                         stats.byGroup[grupo][tipo]++;
                     }
                 } catch (e) {
-                    if (idx <= 5) {
-                        stats.errors.push({ line: idx + 1, msg: e.message });
-                    }
+                    stats.errors.push({ line: idx + 2, msg: e.message });
                 }
             }
-            
+
             console.log('Stats finais:', stats);
             return stats;
         }
@@ -893,175 +911,304 @@
         function baixarPDF() {
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF('p', 'mm', 'a4');
-            
-            let yPosition = 15;
-            const pageWidth = doc.internal.pageSize.getWidth();
-            const pageHeight = doc.internal.pageSize.getHeight();
-            const stats = historicoAnalises[historicoAnalises.length - 1].stats;
-            
-            // Título
-            doc.setFontSize(18);
-            doc.setTextColor(13, 70, 128);
-            doc.text('Analise de Atendimentos SCFF', pageWidth / 2, yPosition, { align: 'center' });
-            yPosition += 12;
-            
-            // Mês e data
-            doc.setFontSize(10);
-            doc.setTextColor(100, 100, 100);
-            const dataAtual = new Date().toLocaleDateString('pt-BR');
-            doc.text(`Mes: ${stats.month} | Gerado em: ${dataAtual}`, pageWidth / 2, yPosition, { align: 'center' });
-            yPosition += 10;
-            
-            // Linha separadora
-            doc.setDrawColor(13, 70, 128);
-            doc.line(15, yPosition, pageWidth - 15, yPosition);
-            yPosition += 8;
-            
-            // Resumo de Atendimentos
-            doc.setFontSize(12);
-            doc.setTextColor(0, 0, 0);
-            doc.text('Resumo de Atendimentos', 15, yPosition);
-            yPosition += 10;
-            
-            const n1Perc = stats.total > 0 ? ((stats.n1 / stats.total) * 100).toFixed(1) : 0;
-            const n2Perc = stats.total > 0 ? ((stats.n2 / stats.total) * 100).toFixed(1) : 0;
-            const conjuntoPerc = stats.total > 0 ? ((stats.conjunto / stats.total) * 100).toFixed(1) : 0;
-            
-            doc.setFontSize(10);
-            const resumoTexto = `N1: ${stats.n1} (${n1Perc}%) | N2: ${stats.n2} (${n2Perc}%) | N1+N2: ${stats.conjunto} (${conjuntoPerc}%) | Total: ${stats.total}`;
-            doc.text(resumoTexto, 15, yPosition);
-            yPosition += 12;
-            
-            // Gráfico Global
-            const chartGlobal = document.getElementById('chartGlobal');
-            if (chartGlobal && yPosition < pageHeight - 100) {
-                try {
-                    const imgGlobal = chartGlobal.toDataURL('image/png');
-                    doc.addImage(imgGlobal, 'PNG', 15, yPosition, 85, 60);
-                    yPosition += 65;
-                } catch(e) {
-                    console.log('Erro ao capturar gráfico global');
+
+            const pageWidth  = doc.internal.pageSize.getWidth();   // 210
+            const pageHeight = doc.internal.pageSize.getHeight();  // 297
+            const marginL = 15, marginR = 15;
+            const contentW = pageWidth - marginL - marginR;        // 180
+
+            // Pega a análise sendo visualizada (última salva)
+            const analiseAtual = historicoAnalises[historicoAnalises.length - 1];
+            const stats = analiseAtual.stats;
+
+            const dataAtual  = new Date().toLocaleDateString('pt-BR');
+            const n1Perc     = stats.total > 0 ? ((stats.n1       / stats.total) * 100).toFixed(1) : '0.0';
+            const n2Perc     = stats.total > 0 ? ((stats.n2       / stats.total) * 100).toFixed(1) : '0.0';
+            const conjPerc   = stats.total > 0 ? ((stats.conjunto / stats.total) * 100).toFixed(1) : '0.0';
+
+            // ─────────────────────────────────────────────
+            // HELPER: Adiciona rodapé em todas as páginas
+            // ─────────────────────────────────────────────
+            function adicionarRodape() {
+                const totalPaginas = doc.internal.getNumberOfPages();
+                for (let i = 1; i <= totalPaginas; i++) {
+                    if (i === 1) continue; // Página 1 é a capa — tem seu próprio rodapé visual
+                    doc.setPage(i);
+                    // Linha separadora
+                    doc.setDrawColor(200, 200, 200);
+                    doc.setLineWidth(0.2);
+                    doc.line(marginL, pageHeight - 14, pageWidth - marginR, pageHeight - 14);
+                    doc.setFontSize(7.5);
+                    doc.setTextColor(160, 160, 160);
+                    doc.setFont(undefined, 'normal');
+                    doc.text(
+                        `© ${new Date().getFullYear()} SCFF - Sistema Contabil Fiscal Financeiro  |  Relatorio gerado automaticamente em ${dataAtual}`,
+                        pageWidth / 2, pageHeight - 8, { align: 'center' }
+                    );
+                    doc.text(`Pagina ${i - 1} / ${totalPaginas - 1}`, pageWidth - marginR, pageHeight - 8, { align: 'right' });
                 }
             }
-            
-            // Nova página se necessário
-            if (yPosition > pageHeight - 100) {
-                doc.addPage();
-                yPosition = 15;
+
+            // ─────────────────────────────────────────────
+            // HELPER: Título de seção com linha decorativa
+            // ─────────────────────────────────────────────
+            function tituloSecao(texto, y) {
+                doc.setFontSize(11);
+                doc.setTextColor(13, 70, 128);
+                doc.setFont(undefined, 'bold');
+                doc.text(texto.toUpperCase(), marginL, y);
+                doc.setDrawColor(13, 70, 128);
+                doc.setLineWidth(0.4);
+                doc.line(marginL, y + 2, pageWidth - marginR, y + 2);
+                doc.setLineWidth(0.2);
+                doc.setFont(undefined, 'normal');
+                return y + 9;
             }
-            
-            // Atendimentos por Grupo
-            doc.setFontSize(12);
-            doc.setTextColor(0, 0, 0);
-            doc.text('Atendimentos por Grupo', 15, yPosition);
-            yPosition += 10;
-            
-            // Gráfico de Grupos
-            const chartGrupos = document.getElementById('chartGrupos');
-            if (chartGrupos && yPosition < pageHeight - 100) {
-                try {
-                    const imgGrupos = chartGrupos.toDataURL('image/png');
-                    doc.addImage(imgGrupos, 'PNG', 15, yPosition, pageWidth - 30, 80);
-                    yPosition += 85;
-                } catch(e) {
-                    console.log('Erro ao capturar gráfico de grupos');
-                }
-            }
-            
-            // Nova página se necessário
-            if (yPosition > pageHeight - 100) {
-                doc.addPage();
-                yPosition = 15;
-            }
-            
-            // Evolução Mensal
-            if (historicoAnalises.length > 1) {
-                doc.setFontSize(12);
-                doc.text('Evolucao Mensal', 15, yPosition);
-                yPosition += 10;
-                
-                const chartEvolucao = document.getElementById('chartTendencia');
-                if (chartEvolucao && yPosition < pageHeight - 100) {
-                    try {
-                        const imgEvolucao = chartEvolucao.toDataURL('image/png');
-                        doc.addImage(imgEvolucao, 'PNG', 15, yPosition, pageWidth - 30, 80);
-                        yPosition += 85;
-                    } catch(e) {
-                        console.log('Erro ao capturar gráfico de evolução');
-                    }
-                }
-                
-                if (yPosition > pageHeight - 100) {
+
+            // ─────────────────────────────────────────────
+            // HELPER: Verifica e adiciona nova página
+            // ─────────────────────────────────────────────
+            function checarPagina(y, espacoNecessario) {
+                if (y + espacoNecessario > pageHeight - 22) {
                     doc.addPage();
-                    yPosition = 15;
+                    return 18;
+                }
+                return y;
+            }
+
+            // ══════════════════════════════════════════════
+            // PÁGINA 1 — CAPA
+            // ══════════════════════════════════════════════
+
+            // Fundo azul marinho na capa
+            doc.setFillColor(13, 70, 128);
+            doc.rect(0, 0, pageWidth, pageHeight, 'F');
+
+            // Faixa decorativa central
+            doc.setFillColor(26, 95, 160);
+            doc.rect(0, pageHeight * 0.38, pageWidth, pageHeight * 0.30, 'F');
+
+            // Linha decorativa superior da faixa
+            doc.setFillColor(102, 126, 234);
+            doc.rect(0, pageHeight * 0.38, pageWidth, 1.2, 'F');
+
+            // Linha decorativa inferior da faixa
+            doc.rect(0, pageHeight * 0.38 + pageHeight * 0.30 - 1.2, pageWidth, 1.2, 'F');
+
+            // Logo / sigla
+            doc.setFontSize(52);
+            doc.setTextColor(255, 255, 255);
+            doc.setFont(undefined, 'bold');
+            doc.text('SCFF', pageWidth / 2, pageHeight * 0.30, { align: 'center' });
+
+            // Nome do setor
+            doc.setFontSize(12);
+            doc.setFont(undefined, 'normal');
+            doc.setTextColor(180, 210, 240);
+            doc.text('Sistema Contabil Fiscal Financeiro', pageWidth / 2, pageHeight * 0.30 + 10, { align: 'center' });
+
+            // Subtítulo
+            doc.setFontSize(10);
+            doc.setTextColor(140, 185, 225);
+            doc.text('Dashboard Analise de Atendimentos', pageWidth / 2, pageHeight * 0.30 + 18, { align: 'center' });
+
+            // Título principal
+            doc.setFontSize(22);
+            doc.setTextColor(255, 255, 255);
+            doc.setFont(undefined, 'bold');
+            doc.text('Relatorio de Atendimentos', pageWidth / 2, pageHeight * 0.46, { align: 'center' });
+
+            // Mês em destaque
+            doc.setFontSize(16);
+            doc.setFont(undefined, 'normal');
+            doc.setTextColor(180, 210, 240);
+            doc.text(stats.month.toUpperCase(), pageWidth / 2, pageHeight * 0.46 + 11, { align: 'center' });
+
+            // Total de atendimentos
+            doc.setFontSize(11);
+            doc.setTextColor(255, 255, 255);
+            doc.text(`Total de Atendimentos: ${stats.total}`, pageWidth / 2, pageHeight * 0.46 + 22, { align: 'center' });
+
+            // Data de geração
+            doc.setFontSize(9);
+            doc.setTextColor(160, 200, 230);
+            doc.text(`Gerado em: ${dataAtual}`, pageWidth / 2, pageHeight * 0.84, { align: 'center' });
+
+            // Barra inferior
+            doc.setFillColor(102, 126, 234);
+            doc.rect(0, pageHeight - 18, pageWidth, 18, 'F');
+            doc.setFontSize(8);
+            doc.setTextColor(220, 230, 255);
+            doc.text('SCFF - Sistema Contabil Fiscal Financeiro', pageWidth / 2, pageHeight - 7, { align: 'center' });
+
+            // ══════════════════════════════════════════════
+            // PÁGINA 2 — RESUMO EXECUTIVO + GRÁFICOS
+            // ══════════════════════════════════════════════
+            doc.addPage();
+            let y = 18;
+
+            y = tituloSecao('Resumo Executivo', y);
+
+            // Cards de resumo (4 cards lado a lado)
+            const cards = [
+                { label: 'N1',       valor: stats.n1,       perc: n1Perc,   cor: [46, 213, 115] },
+                { label: 'N2',       valor: stats.n2,       perc: n2Perc,   cor: [255, 159, 67] },
+                { label: 'N1 + N2',  valor: stats.conjunto, perc: conjPerc, cor: [102, 126, 234] },
+                { label: 'TOTAL',    valor: stats.total,    perc: '100.0',  cor: [13, 70, 128] },
+            ];
+
+            const cardW   = (contentW - 9) / 4;  // 4 cards com gap de 3mm entre eles
+            const cardH   = 26;
+            const cardY   = y;
+
+            cards.forEach((card, i) => {
+                const cx = marginL + i * (cardW + 3);
+
+                // Fundo do card
+                doc.setFillColor(...card.cor);
+                doc.roundedRect(cx, cardY, cardW, cardH, 2, 2, 'F');
+
+                // Barra luminosa no topo
+                doc.setFillColor(255, 255, 255);
+                doc.setGState(new doc.GState({ opacity: 0.15 }));
+                doc.roundedRect(cx, cardY, cardW, 4, 2, 2, 'F');
+                doc.setGState(new doc.GState({ opacity: 1 }));
+
+                // Valor principal
+                doc.setTextColor(255, 255, 255);
+                doc.setFontSize(18);
+                doc.setFont(undefined, 'bold');
+                doc.text(String(card.valor), cx + cardW / 2, cardY + 12, { align: 'center' });
+
+                // Label
+                doc.setFontSize(7.5);
+                doc.setFont(undefined, 'normal');
+                doc.text(card.label, cx + cardW / 2, cardY + 18, { align: 'center' });
+
+                // Percentual
+                doc.setFontSize(8.5);
+                doc.setFont(undefined, 'bold');
+                doc.text(`${card.perc}%`, cx + cardW / 2, cardY + 23.5, { align: 'center' });
+            });
+
+            y = cardY + cardH + 12;
+
+            // ── Gráficos lado a lado ──
+            y = tituloSecao('Distribuicao e Atendimentos por Grupo', y);
+
+            const chartGlobal = document.getElementById('chartGlobal');
+            const chartGrupos = document.getElementById('chartGrupos');
+            const grafH = 72;
+            const halfW = (contentW - 5) / 2;
+
+            if (chartGlobal) {
+                try {
+                    doc.addImage(chartGlobal.toDataURL('image/png'), 'PNG', marginL, y, halfW, grafH);
+                } catch(e) { console.warn('Erro gráfico global', e); }
+            }
+            if (chartGrupos) {
+                try {
+                    doc.addImage(chartGrupos.toDataURL('image/png'), 'PNG', marginL + halfW + 5, y, halfW, grafH);
+                } catch(e) { console.warn('Erro gráfico grupos', e); }
+            }
+            y += grafH + 12;
+
+            // ── Evolução Mensal (se houver) ──
+            if (historicoAnalises.length > 1) {
+                y = checarPagina(y, 90);
+                y = tituloSecao('Evolucao Mensal', y);
+                const chartEvolucao = document.getElementById('chartTendencia');
+                if (chartEvolucao) {
+                    try {
+                        doc.addImage(chartEvolucao.toDataURL('image/png'), 'PNG', marginL, y, contentW, 72);
+                        y += 78;
+                    } catch(e) { console.warn('Erro gráfico evolução', e); }
                 }
             }
-            
-            // Detalhamento por Grupo - Tabela
-            doc.setFontSize(12);
-            doc.text('Detalhamento por Grupo', 15, yPosition);
-            yPosition += 10;
-            
-            // Tabela
-            const table = document.querySelector('table');
-            if (table) {
-                const rows = [];
-                const headers = [];
-                
-                // Pegar headers
-                table.querySelectorAll('thead th').forEach(th => {
-                    headers.push(th.textContent);
-                });
-                rows.push(headers);
-                
-                // Pegar dados
-                table.querySelectorAll('tbody tr').forEach(tr => {
-                    const rowData = [];
-                    tr.querySelectorAll('td').forEach(td => {
-                        rowData.push(td.textContent);
-                    });
-                    rows.push(rowData);
-                });
-                
-                // Desenhar tabela
-                doc.setFontSize(9);
-                const colWidths = [50, 18, 18, 18, 18];
-                const rowHeight = 7;
-                let tableY = yPosition;
-                
-                rows.forEach((row, rowIndex) => {
-                    if (tableY > pageHeight - 15) {
-                        doc.addPage();
-                        tableY = 15;
+
+            // ══════════════════════════════════════════════
+            // PÁGINA 3+ — TABELA DETALHAMENTO
+            // ══════════════════════════════════════════════
+            y = checarPagina(y, 60);
+            if (y < 18) y = 18;
+            y = tituloSecao('Detalhamento por Grupo', y);
+
+            // Montar dados da tabela a partir dos stats (não do DOM)
+            const grupos = Object.keys(stats.byGroup);
+            const tabelaHeaders = ['Grupo', 'N1', 'N2', 'N1+N2', 'Total'];
+            const tabelaRows = grupos.map(g => {
+                const d = stats.byGroup[g];
+                const tot = d.n1 + d.n2 + d.conjunto;
+                return [g, String(d.n1), String(d.n2), String(d.conjunto), String(tot)];
+            });
+            tabelaRows.push(['TOTAL', String(stats.n1), String(stats.n2), String(stats.conjunto), String(stats.total)]);
+
+            const colW = [78, 24, 24, 24, 21];  // soma = 171mm — cabe em 180 com folga
+            const rowH = 8;
+
+            // ── Função auxiliar: desenha uma linha da tabela ──
+            function desenharLinha(rowData, yLinha, isHeader, isTotal, isOdd) {
+                let xp = marginL;
+                rowData.forEach((cell, ci) => {
+                    // Definir cores de fundo explicitamente para cada célula
+                    if (isHeader || isTotal) {
+                        doc.setFillColor(13, 70, 128);
+                    } else if (isOdd) {
+                        doc.setFillColor(235, 242, 255);
+                    } else {
+                        doc.setFillColor(255, 255, 255);
                     }
-                    
-                    let xPos = 15;
-                    row.forEach((cell, colIndex) => {
-                        if (rowIndex === 0) {
-                            doc.setFillColor(13, 70, 128);
-                            doc.setTextColor(255, 255, 255);
-                        } else if (row[0] === 'TOTAL') {
-                            doc.setFillColor(13, 70, 128);
-                            doc.setTextColor(255, 255, 255);
-                        } else {
-                            doc.setFillColor(245, 245, 245);
-                            doc.setTextColor(0, 0, 0);
-                        }
-                        
-                        doc.rect(xPos, tableY, colWidths[colIndex], rowHeight, 'F');
-                        doc.text(String(cell).trim(), xPos + 2, tableY + 5, { maxWidth: colWidths[colIndex] - 4 });
-                        xPos += colWidths[colIndex];
-                    });
-                    tableY += rowHeight;
+
+                    // 1. Desenhar fundo (fill)
+                    doc.rect(xp, yLinha, colW[ci], rowH, 'F');
+
+                    // 2. Desenhar borda (stroke) — separado para não interferir no fill
+                    doc.setDrawColor(190, 200, 220);
+                    doc.setLineWidth(0.1);
+                    doc.rect(xp, yLinha, colW[ci], rowH, 'S');
+
+                    // 3. Texto com cores explícitas
+                    if (isHeader || isTotal) {
+                        doc.setTextColor(255, 255, 255);
+                        doc.setFont(undefined, 'bold');
+                    } else {
+                        doc.setTextColor(40, 40, 40);
+                        doc.setFont(undefined, ci === 0 ? 'normal' : 'normal');
+                    }
+
+                    doc.setFontSize(8.5);
+                    const align = ci === 0 ? 'left' : 'center';
+                    const tx    = ci === 0 ? xp + 3  : xp + colW[ci] / 2;
+                    doc.text(String(cell).trim(), tx, yLinha + 5.2, { align, maxWidth: colW[ci] - 4 });
+
+                    xp += colW[ci];
                 });
             }
-            
-            // Rodapé
-            doc.setFontSize(8);
-            doc.setTextColor(150, 150, 150);
-            doc.text('© 2025 Sistema de Analise SCFF - Relatorio Gerado Automaticamente', pageWidth / 2, pageHeight - 10, { align: 'center' });
-            
-            doc.save('relatorio_scff.pdf');
+
+            // ── Header ──
+            desenharLinha(tabelaHeaders, y, true, false, false);
+            y += rowH;
+
+            // ── Linhas de dados ──
+            tabelaRows.forEach((row, ri) => {
+                y = checarPagina(y, rowH + 2);
+                // Se mudou de página, redesenhar o header
+                if (y === 18) {
+                    desenharLinha(tabelaHeaders, y, true, false, false);
+                    y += rowH;
+                }
+                const isTotal = row[0] === 'TOTAL';
+                const isOdd   = ri % 2 !== 0;  // zebra: linhas ímpares com azul claro
+                desenharLinha(row, y, false, isTotal, isOdd);
+                y += rowH;
+            });
+
+            // ── Aplica rodapé em todas as páginas ──
+            adicionarRodape();
+
+            // ── Salva com nome dinâmico ──
+            const nomeMes = stats.month.toLowerCase().replace(/\s+/g, '_');
+            doc.save(`relatorio_scff_${nomeMes}.pdf`);
         }
 
         function voltarFormulario() {
